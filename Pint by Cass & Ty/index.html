@@ -1,0 +1,222 @@
+{# index.html is the browser page. Flask fills in the {{ ... }} placeholders
+   and processes the {% ... %} loops/conditions before sending normal HTML. #}
+<!doctype html>
+<html lang="en">
+<head>
+  {# Settings that help the browser display the page correctly. #}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# The business name comes from BUSINESS_NAME in app.py. #}
+  <title>{{ business_name }} · Finance tracker</title>
+  {# url_for asks Flask for the correct address of the CSS file. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {# The outer container keeps the content aligned and centered. #}
+  <div class="shell">
+    {# Header: business name on the left and currency on the right. #}
+    <header class="topbar">
+      {# This link takes the user back to the Overview page. #}
+      <a class="brand" href="{{ url_for('index') }}">
+        <img class="brand-logo" src="{{ url_for('static', filename='logo.jpg') }}" alt="Pint by Cass & Ty logo">
+        <span><strong>{{ business_name }}</strong><small>Ice cream business finance</small></span>
+      </a>
+      <div class="top-actions">
+        <a class="text-link" href="{{ url_for('order_home') }}" target="_blank" rel="noopener">Open customer order page ↗</a>
+        <span class="currency-pill">{{ currency_code }} · {{ currency_symbol }}</span>
+        <span class="signed-in">{{ current_user.display_name }}</span>
+        <form method="post" action="{{ url_for('logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button secondary" type="submit">Sign out</button></form>
+      </div>
+    </header>
+
+    {# Build the four page links from a short list instead of repeating code. #}
+    <nav class="tabs" aria-label="Main navigation">
+      {% for tab, label in [('overview','Overview'),('batches','Batches'),('costs','Costs'),('sales','Sales'),('orders','Customer orders'),('loyalty','Loyalty'),('shop','Customer page')] %}
+        {# If this is the open page, add the 'active' CSS class to highlight it. #}
+        <a class="tab {% if active_tab == tab %}active{% endif %}" href="{{ url_for('index', tab=tab) }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+
+    <main>
+      {# Flask's flash system shows a short success/error message after a form. #}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="messages">{% for category, message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+      {% endwith %}
+
+      {# Show only the section matching active_tab. Python chooses that value. #}
+      {% if active_tab == 'overview' %}
+        {# OVERVIEW: headline, total cards, and a short batch summary. #}
+        <section class="page-heading">
+          <div><p class="eyebrow">YOUR BUSINESS AT A GLANCE</p><h1>Overview</h1><p class="muted">A live snapshot of sales, purchases, and business profit.</p></div>
+          <a class="button primary" href="{{ url_for('index', tab='sales') }}">＋ Record a sale</a>
+        </section>
+        {# These amounts are calculated in app.py and passed to this template. #}
+        <section class="cards">
+          <article class="metric-card"><span class="metric-label">Total revenue</span><strong>{{ revenue_cents|money }}</strong><small>{{ sale_count }} sale{{ '' if sale_count == 1 else 's' }} recorded</small></article>
+          <article class="metric-card"><span class="metric-label">Costs incurred</span><strong>{{ cost_cents|money }}</strong><small>{{ cost_count }} purchase{{ '' if cost_count == 1 else 's' }} recorded</small></article>
+          <article class="metric-card {% if profit_cents < 0 %}negative{% else %}positive{% endif %}"><span class="metric-label">Profit / loss</span><strong>{{ profit_cents|money }}</strong><small>{% if profit_cents > 0 %}Business is profitable{% elif profit_cents < 0 %}Currently operating at a loss{% elif revenue_cents or cost_cents %}Break-even so far{% else %}Waiting for your first entries{% endif %}</small></article>
+        </section>
+        {# Loop through batches and create one table row per batch. #}
+        <section class="panel split-panel">
+          <div><p class="eyebrow">BATCH PERFORMANCE</p><h2>Recent batches</h2></div>
+          <a class="text-link" href="{{ url_for('index', tab='batches') }}">Manage batches →</a>
+          {% if batches %}
+            <div class="table-wrap full-width"><table><thead><tr><th>Batch</th><th>Product</th><th>Batch costs</th><th>Sales</th><th>Batch profit / loss</th></tr></thead><tbody>
+            {% for batch in batches[:6] %}<tr><td><strong>{{ batch.code }}</strong></td><td>{{ batch.product }}</td><td>{{ batch.cost_cents|money }}</td><td>{{ batch.revenue_cents|money }}</td><td class="{% if batch.revenue_cents - batch.cost_cents < 0 %}loss-text{% else %}profit-text{% endif %}">{{ (batch.revenue_cents - batch.cost_cents)|money }}</td></tr>{% endfor %}
+            </tbody></table></div>
+          {% else %}<p class="empty full-width">Add your first batch to start connecting sales and purchases.</p>{% endif %}
+        </section>
+
+      {% elif active_tab == 'batches' %}
+        {# BATCHES: the first form registers a batch ID and its product/flavor. #}
+        <section class="page-heading"><div><p class="eyebrow">PRODUCTION TRACKING</p><h1>Batches</h1><p class="muted">Each production batch can include multiple pints of one flavour. Set the scoop count per pint for every batch.</p></div></section>
+        <section class="panel form-panel"><div><h2>Add a batch</h2><p class="muted">Use a unique ID such as B-001, enter how many pints you made, and choose who prepared them.</p></div>
+          {# POST sends the named fields to the Python add_batch() function. #}
+          <form class="form-grid" method="post" action="{{ url_for('add_batch') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>Batch ID<input name="code" placeholder="B-001" required maxlength="40"></label>
+            <label>Flavour<select name="product" id="batch-flavour" required>{% for flavor in flavor_prices %}<option value="{{ flavor }}">{{ flavor }}</option>{% endfor %}</select></label>
+            <label>Recipe / mix-in<select name="recipe_variant" id="batch-recipe-variant" required><option value="Base recipe" data-flavour="*">Base recipe</option>{% for flavour, variants in recipe_options.items() %}{% for variant in variants %}<option value="{{ variant }}" data-flavour="{{ flavour }}">{{ variant }}</option>{% endfor %}{% endfor %}</select><span class="optional">Record what was actually blended into this batch.</span></label>
+            <label>Number of pints made<input name="pints_made" type="number" min="1" max="500" step="1" value="1" required></label>
+            <label>Scoops per pint<input name="scoops_per_pint" type="number" min="1" max="100" step="1" value="8" required><span class="optional">Starting estimate: 8; adjust for this batch.</span></label>
+            <label>Prepared by<select name="prepared_by" required><option value="">Choose a preparer</option>{% for partner in partners %}<option>{{ partner }}</option>{% endfor %}<option>Both</option></select></label>
+            <label>Made on <span class="optional">optional</span><input name="made_on" type="date"></label>
+            <div class="form-action"><button class="button primary" type="submit">Add batch</button></div>
+          </form>
+        </section>
+        {# The categories in this table mirror COST_CATEGORIES in app.py. #}
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">BATCH REGISTER</p><h2>{{ batches|length }} batch{{ '' if batches|length == 1 else 'es' }}</h2></div></div>
+          {% if batches %}<div class="table-wrap"><table><thead><tr><th>Batch ID</th><th>Product</th><th>Recipe / mix-in</th><th>Pints made</th><th>Scoops / pint</th><th>Prepared by</th><th>Made on</th><th>Remaining</th><th>Ingredients</th><th>Packaging</th><th>Labor</th><th>Delivery</th><th>Equipment</th><th>Other</th><th>Total costs</th><th>Sales</th><th>Profit / loss</th><th>Actions</th></tr></thead><tbody>
+          {% for batch in batches %}<tr><td><strong>{{ batch.code }}</strong></td><td>{{ batch.product }}</td><td>{{ batch.recipe_variant }}</td><td><input class="batch-capacity-input" type="number" name="pints_made" min="1" max="500" value="{{ batch.pints_made }}" form="batch-capacity-{{ batch.id }}" aria-label="Number of pints made for {{ batch.code }}"></td><td><input class="batch-capacity-input" type="number" name="scoops_per_pint" min="1" max="100" value="{{ batch.scoops_per_pint }}" form="batch-capacity-{{ batch.id }}" aria-label="Scoops per pint for {{ batch.code }}"></td><td>{{ batch.prepared_by or 'Not recorded' }}</td><td>{{ batch.made_on or '—' }}</td><td>{{ batch.remaining_scoops }} scoops ({{ (batch.remaining_scoops / batch.scoops_per_pint)|round(0, 'floor')|int }} full pints)</td><td>{{ batch.ingredients_cents|money }}</td><td>{{ batch.packaging_cents|money }}</td><td>{{ batch.labor_cents|money }}</td><td>{{ batch.delivery_cents|money }}</td><td>{{ batch.equipment_cents|money }}</td><td>{{ batch.other_cents|money }}</td><td><strong>{{ batch.cost_cents|money }}</strong></td><td>{{ batch.revenue_cents|money }}</td><td class="{% if batch.revenue_cents - batch.cost_cents < 0 %}loss-text{% else %}profit-text{% endif %}">{{ (batch.revenue_cents - batch.cost_cents)|money }}</td><td><form id="batch-capacity-{{ batch.id }}" method="post" action="{{ url_for('update_batch_capacity', batch_id=batch.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form><button class="button secondary batch-update-button" type="submit" form="batch-capacity-{{ batch.id }}">Save</button>{% if batch.linked_order_count == 0 %}<form method="post" action="{{ url_for('delete_batch', batch_id=batch.id) }}" onsubmit="return confirm('Delete batch {{ batch.code }} and ALL costs and sales linked to it? This cannot be undone.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button danger" type="submit">Delete batch + records</button></form>{% else %}<small class="optional">Cancel the {{ batch.linked_order_count }} paid customer order(s) first.</small>{% endif %}</td></tr>{% endfor %}
+          </tbody></table></div>{% else %}<p class="empty">No batches yet. Add one above.</p>{% endif %}
+        </section>
+
+      {% elif active_tab == 'costs' %}
+        {# COSTS: the form records purchase date, batch, category, item, amount, payer. #}
+        <section class="page-heading"><div><p class="eyebrow">PURCHASES & EXPENSES</p><h1>Costs</h1><p class="muted">Log purchases by category, date, payer, and batch.</p></div></section>
+        <section class="panel form-panel"><div><h2>Record a cost</h2><p class="muted">Leave the batch blank for a shared or general business cost.</p></div>
+          {# Each name= value below is a key read from request.form in app.py. #}
+          <form class="form-grid" method="post" action="{{ url_for('add_cost') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>Purchase date<input name="purchased_on" type="date" value="{{ today }}" required></label>
+            <label>Batch <span class="optional">optional</span><select name="batch_id"><option value="">Shared / general</option>{% for batch in batches %}<option value="{{ batch.id }}" data-remaining="{{ batch.remaining_scoops }}" data-scoops-per-pint="{{ batch.scoops_per_pint }}">{{ batch.code }} · {{ batch.product }} · {{ batch.remaining_scoops }} scoops left</option>{% endfor %}</select></label>
+            <label>Category<select name="category" required>{% for category in categories %}<option>{{ category }}</option>{% endfor %}</select></label>
+            <label>Item / description<input name="description" placeholder="Cream, cups, delivery…" required maxlength="140"></label>
+            <label>Quantity<input name="quantity" type="number" min="0.01" step="0.01" placeholder="1" required></label>
+            <label>Cost per unit ({{ currency_symbol }})<input name="unit_cost" type="number" min="0" step="0.01" placeholder="0.00" required></label>
+            <label>Paid by<select name="paid_by" required>{% for partner in partners %}<option>{{ partner }}</option>{% endfor %}</select></label>
+            <div class="form-action"><button class="button primary" type="submit">Save cost</button></div>
+          </form>
+        </section>
+        {# If there are records, loop over them. Otherwise show a friendly blank state. #}
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">COST LEDGER</p><h2>Recent purchases</h2></div><span class="count-pill">{{ cost_count }} total</span></div>
+          {% if recent_costs %}<div class="table-wrap"><table><thead><tr><th>Purchased</th><th>Batch</th><th>Category</th><th>Item</th><th>Qty</th><th>Unit cost</th><th>Total</th><th>Paid by</th><th></th></tr></thead><tbody>
+          {# One row per cost. The × form sends a POST to the delete route. #}
+          {% for item in recent_costs %}<tr><td>{{ item.purchased_on }}</td><td>{{ item.batch_code or 'Shared' }}</td><td><span class="tag">{{ item.category }}</span></td><td>{{ item.description }}</td><td>{{ "%.2f"|format(item.quantity) }}</td><td>{{ item.unit_cost_cents|money }}</td><td><strong>{{ item.total_cents|money }}</strong></td><td>{{ item.paid_by }}</td><td><form method="post" action="{{ url_for('delete_entry', kind='costs', entry_id=item.id) }}" onsubmit="return confirm('Remove this cost entry?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" title="Remove entry" aria-label="Remove entry">×</button></form></td></tr>{% endfor %}
+          </tbody></table></div>{% else %}<p class="empty">No costs yet. Your purchases will appear here.</p>{% endif %}
+        </section>
+
+      {% elif active_tab == 'sales' %}
+        {# SALES: choose a registered batch; add buyer, partner, quantity and price. #}
+        <section class="page-heading"><div><p class="eyebrow">ORDERS & INCOME</p><h1>Sales</h1><p class="muted">Record what sold, who bought it, and which partner handled the sale.</p></div></section>
+        <section class="panel form-panel"><div><h2>Record a sale</h2><p class="muted">Choose a batch from the list. Add it on the Batches page first if it is new.</p></div>
+          {# These named form fields are submitted to app.py's add_sale() route. #}
+          <form class="form-grid" method="post" action="{{ url_for('add_sale') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label>Sale date<input name="sold_on" type="date" value="{{ today }}" required></label>
+            <label>Batch / flavour<select name="batch_id" required><option value="">Choose a batch</option>{% for batch in batches %}{% if batch.remaining_scoops > 0 %}<option value="{{ batch.id }}" data-remaining="{{ batch.remaining_scoops }}" data-scoops-per-pint="{{ batch.scoops_per_pint }}">{{ batch.code }} · {{ batch.product }} · {{ batch.remaining_scoops }} scoops left</option>{% endif %}{% endfor %}</select></label>
+            <label>Sold as<select name="unit_type" id="sale-unit-type" required><option value="scoop">Scoop · 50 g</option><option value="pint">Pint · 400 g</option></select></label>
+            <label>Quantity sold<input name="quantity" id="sale-quantity" type="number" min="1" max="500" step="1" placeholder="1" required></label>
+            <p class="order-note wide-field">Choose a production batch. Available stock is shown in the batch list, and each batch has its own scoop count per pint.</p>
+            <label>Customer / buyer<input name="buyer" placeholder="Name or Walk-in" required maxlength="100"></label>
+            <label>Sold by<select name="sold_by" required>{% for partner in partners %}<option>{{ partner }}</option>{% endfor %}</select></label>
+            <label class="wide-field">Notes <span class="optional">optional</span><input name="notes" placeholder="Order details, delivery, payment notes…" maxlength="200"></label>
+            <div class="form-action"><button class="button primary" type="submit">Save sale</button></div>
+          </form>
+        </section>
+        {# This summary counts scoops and revenue for each flavour in the price list. #}
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">FLAVOUR MIX</p><h2>Scoops sold by flavour</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Flavour</th><th>Price / scoop</th><th>Scoops sold</th><th>Scoop revenue</th></tr></thead><tbody>
+          {% for flavor, price_cents in flavor_prices.items() %}{% set totals = flavor_totals.get(flavor) %}<tr><td><strong>{{ flavor }}</strong></td><td>{{ price_cents|money }}</td><td>{{ "%.2f"|format(totals.scoops if totals else 0) }}</td><td>{{ (totals.revenue_cents if totals else 0)|money }}</td></tr>{% endfor %}
+          </tbody></table></div>
+        </section>
+        {# Show saved sales. The if/else handles an empty database gracefully. #}
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">SALES LEDGER</p><h2>Recent sales</h2></div><span class="count-pill">{{ sale_count }} total</span></div>
+          {% if recent_sales %}<div class="table-wrap"><table><thead><tr><th>Sold</th><th>Batch</th><th>Flavour</th><th>Quantity</th><th>Sold as</th><th>Price / unit</th><th>Revenue</th><th>Buyer</th><th>Sold by</th><th>Notes</th><th></th></tr></thead><tbody>
+          {# One saved sale per row; `or '—'` displays a dash for empty notes. #}
+          {% for item in recent_sales %}<tr><td>{{ item.sold_on }}</td><td>{{ item.batch_code }}</td><td>{{ item.flavour or item.batch_product }}</td><td>{{ "%.0f"|format(item.quantity) }}</td><td>{{ 'Pint' if item.unit_type == 'pint' else 'Scoop' }}</td><td>{{ item.unit_price_cents|money }}</td><td><strong>{{ item.total_cents|money }}</strong></td><td>{{ item.buyer }}</td><td>{{ item.sold_by }}</td><td>{{ item.notes or '—' }}</td><td><form method="post" action="{{ url_for('delete_entry', kind='sales', entry_id=item.id) }}" onsubmit="return confirm('Remove this sale entry?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="icon-button" title="Remove entry" aria-label="Remove entry">×</button></form></td></tr>{% endfor %}
+          </tbody></table></div>{% else %}<p class="empty">No sales yet. Your orders will appear here.</p>{% endif %}
+        </section>
+
+      {% elif active_tab == 'orders' %}
+        {# ORDERS: customer requests arrive here; confirming a checked payment records the sale. #}
+        <section class="page-heading"><div><p class="eyebrow">CUSTOMER CHECKOUT</p><h1>Customer orders</h1><p class="muted">Check the PayNow or bank transfer before confirming. Only confirmed payments are added to revenue.</p></div><a class="button primary" href="{{ url_for('order_home') }}" target="_blank" rel="noopener">Open order page ↗</a></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">INCOMING REQUESTS</p><h2>Orders</h2></div><span class="count-pill">{{ recent_orders|length }} shown</span></div>
+          {% if recent_orders %}<div class="table-wrap"><table><thead><tr><th>Order</th><th>Placed</th><th>Customer / contact</th><th>Product / quantity</th><th>Amount / reward</th><th>Pickup requested</th><th>Transfer ref</th><th>Screenshot</th><th>Status / action</th></tr></thead><tbody>
+          {% for item in recent_orders %}<tr><td><strong>P-{{ "%05d"|format(item.id) }}</strong></td><td>{{ item.placed_at }}</td><td>{{ item.customer_name }}<br><span class="muted">{{ item.contact_method }}: {{ item.contact }}</span></td><td>{{ item.flavour }}{% if item.recipe_variant and item.recipe_variant != 'Base recipe' %}<br><small>{{ item.recipe_variant }}</small>{% endif %} · {{ "%.0f"|format(item.scoops) }} {{ 'pint(s)' if item.unit_type == 'pint' else 'scoop(s)' }}{% if item.free_pint_flavour %}<br>Free {{ item.free_pint_flavour }} pint{% endif %}</td><td><strong>{{ item.total_cents|money }}</strong>{% if item.discount_cents %}<br><small>{{ item.reward_points }} pts redeemed; {{ item.discount_cents|money }} off</small>{% endif %}</td><td>{% if item.fulfilment_method == 'event' %}Event{% else %}Pickup · {{ 'Cass / ' ~ shop.cass_location if item.pickup_location == 'cass_amk' else 'Tyler / ' ~ shop.tyler_location if item.pickup_location == 'tyler_serangoon' else 'Location not set' }}<br>{{ item.pickup_date or 'Date not set' }}{% if item.pickup_time %} · {{ item.pickup_time }}{% endif %}{% endif %}</td><td>P-{{ "%05d"|format(item.id) }}</td><td>{% if item.receipt_filename %}<a class="text-link" href="{{ url_for('view_order_receipt', order_id=item.id) }}">Download proof</a>{% else %}Not uploaded{% endif %}</td><td>
+            {% if item.status in ['Awaiting payment screenshot', 'Payment review'] %}<span class="tag">{{ item.status }}</span><form class="order-action" method="post" action="{{ url_for('confirm_order_payment', order_id=item.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% set matching_available = namespace(found=false) %}<label>Matching batch<select name="batch_id" required><option value="">Choose {{ item.flavour }} batch</option>{% for batch in batches %}{% set batch_required_scoops = item.scoops * (batch.scoops_per_pint if item.unit_type == 'pint' else 1) %}{% if batch.product == item.flavour and batch.recipe_variant == item.recipe_variant and batch.remaining_scoops >= batch_required_scoops %}{% set matching_available.found = true %}<option value="{{ batch.id }}">{{ batch.code }} · {{ batch.recipe_variant }} · {{ batch.remaining_scoops }} scoops left</option>{% endif %}{% endfor %}</select>{% if not matching_available.found %}<span class="optional">No {{ item.flavour }} batch has enough remaining stock for this order.</span>{% endif %}</label>{% if item.reward_points == 100 %}<label>Free pint batch<select name="pint_batch_id" required><option value="">Choose {{ item.free_pint_flavour }} pint batch</option>{% for batch in batches %}{% if batch.product == item.free_pint_flavour and batch.remaining_scoops >= batch.scoops_per_pint %}<option value="{{ batch.id }}">{{ batch.code }} · {{ batch.remaining_scoops }} scoops left</option>{% endif %}{% endfor %}</select></label>{% endif %}<label>Confirmed by<select name="sold_by" required>{% for partner in partners %}<option>{{ partner }}</option>{% endfor %}</select></label><button class="button primary" type="submit">Payment checked · confirm order</button></form>
+            {% elif item.status in ['Payment confirmed', 'Ready for pickup'] %}<span class="tag">{{ item.status }}</span><form method="post" action="{{ url_for('set_pickup_status', order_id=item.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next_status" value="{{ 'not_ready' if item.status == 'Ready for pickup' else 'ready' }}"><button class="button secondary" type="submit">{{ 'Mark not ready' if item.status == 'Ready for pickup' else 'Mark ready for pickup' }}</button></form>
+            {% else %}<span class="tag">{{ item.status }}</span>{% if item.status == 'Awaiting payment screenshot' and not batches %}<small>Add a batch before confirming.</small>{% endif %}{% endif %}
+            {% if item.status != 'Cancelled' %}<form class="cancel-order" method="post" action="{{ url_for('cancel_order', order_id=item.id) }}" onsubmit="return confirm('Cancel this order? If payment was confirmed, the sale will be removed, stock restored, and loyalty points adjusted. Handle any refund to the customer separately.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="text-link" type="submit">Cancel order</button></form>{% endif %}
+            {% if item.status in ['Cancelled', 'Awaiting payment screenshot', 'Payment review'] %}<form class="cancel-order" method="post" action="{{ url_for('delete_order_request', order_id=item.id) }}" onsubmit="return confirm('Permanently delete this customer order request?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="button danger" type="submit">Delete request</button></form>{% endif %}
+          </td></tr>{% endfor %}
+          </tbody></table></div>{% else %}<p class="empty">No customer orders yet. Share the customer order page when you are ready.</p>{% endif %}
+        </section>
+      {% elif active_tab == 'loyalty' %}
+        <section class="page-heading"><div><p class="eyebrow">CUSTOMER REWARDS</p><h1>Loyalty</h1><p class="muted">Private partner view. Confirm the contact matches the same customer before approving a reward. Deleting a loyalty account removes its points and points history, but keeps the customer’s orders and sales.</p></div></section>
+        <section class="panel"><div class="panel-heading"><div><h2>Customer point balances</h2></div><span class="count-pill">{{ loyalty_customers|length }} customers</span></div>
+          {% if loyalty_customers %}<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Contact method</th><th>Contact / loyalty ID</th><th>Points</th><th>Reserved on unpaid orders</th><th>Lifetime earned</th><th>Lifetime redeemed</th><th>Actions</th></tr></thead><tbody>{% for customer in loyalty_customers %}<tr><td>{{ customer.customer_name }}</td><td>{{ customer.contact_method }}</td><td>{{ customer.contact }}</td><td><strong>{{ customer.points }}</strong></td><td>{{ customer.reserved_points }}</td><td>{{ customer.lifetime_earned }}</td><td>{{ customer.lifetime_redeemed }}</td><td><form method="post" action="{{ url_for('delete_loyalty_customer') }}" onsubmit="return confirm('Delete {{ customer.customer_name }}’s loyalty account, points, and points history? Their orders and sales will remain. If they order again with the same contact, they will start at 0 points.')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="contact_key" value="{{ customer.contact_key }}"><button class="button danger" type="submit" {% if customer.reserved_points > 0 %}disabled title="Cancel or delete unpaid orders using reserved points first."{% endif %}>Delete loyalty account</button></form>{% if customer.reserved_points > 0 %}<small class="optional">Cancel the unpaid reward order first.</small>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty">Points accounts appear here after a customer places an order.</p>{% endif %}
+        </section>
+      {% elif active_tab == 'shop' %}
+        <section class="page-heading"><div><p class="eyebrow">CUSTOMER ORDER SETTINGS</p><h1>Customer page</h1><p class="muted">Choose what customers can order. These choices update the public page.</p></div><a class="button primary" href="{{ url_for('order_home') }}" target="_blank" rel="noopener">Preview customer page ↗</a></section>
+        <section class="panel form-panel"><div><h2>Order options</h2><p class="muted">Turn on the types currently available. Pickup dates are weekdays at least four days ahead.</p></div>
+          <form class="form-grid" id="shop-settings-form" method="post" action="{{ url_for('update_shop_settings') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="save">
+            <label><input type="checkbox" name="allow_event" {% if shop.allow_event %}checked{% endif %}> Event orders</label><label><input type="checkbox" name="allow_pickup" {% if shop.allow_pickup %}checked{% endif %}> Pickup orders</label><label><input type="checkbox" name="allow_scoop" {% if shop.allow_scoop %}checked{% endif %}> Sell by scoop</label><label><input type="checkbox" name="allow_pint" {% if shop.allow_pint %}checked{% endif %}> Sell by pint</label>
+            <label>Cass’s pickup area<input name="cass_location" maxlength="80" required value="{{ shop.cass_location }}" placeholder="e.g. AMK"></label><label>Tyler’s pickup area<input name="tyler_location" maxlength="80" required value="{{ shop.tyler_location }}" placeholder="e.g. Serangoon"></label>
+            <label class="wide-field">Telegram channel link for pickup-date updates<input name="telegram_url" type="url" placeholder="https://t.me/yourchannel" value="{{ shop.telegram_url }}"><span class="optional">Customers will see a link to this channel. Paste your real channel link.</span></label><div class="form-action"><button class="button primary" type="submit">Save customer page options</button></div>
+          </form>
+        </section>
+        <section class="panel form-panel"><div><h2>Add a flavour</h2><p class="muted">New flavours appear in your batch form, customer menu, and prices.</p></div><form class="form-grid" method="post" action="{{ url_for('update_shop_settings') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="add_flavour"><label>Flavour name<input name="flavour_name" maxlength="60" required><span class="optional">Entering an existing flavour name updates its price/description and puts it back on the menu.</span></label><label>Scoop price ({{ currency_symbol }})<input name="price" type="number" min="0.01" step="0.01" required></label><label class="wide-field">Description<input name="description" maxlength="240" placeholder="A short description for customers"></label><div class="form-action"><button class="button primary" type="submit">Add flavour</button></div></form></section>
+        <section class="panel"><div class="panel-heading"><div><h2>Menu flavours</h2><p class="muted">A flavour used in an existing batch or customer order is kept for business history.</p></div></div><div class="table-wrap"><table><thead><tr><th>Flavour</th><th>Scoop price</th><th>Description</th><th>Action</th></tr></thead><tbody>{% for flavour, price in flavor_prices.items() %}<tr><td>{{ flavour }}</td><td>{{ price|money }}</td><td>{{ flavor_descriptions.get(flavour, '') }}</td><td><form method="post" action="{{ url_for('update_shop_settings') }}" onsubmit="return confirm('Remove {{ flavour }} from the customer menu?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="delete_flavour"><input type="hidden" name="flavour_name" value="{{ flavour }}"><button class="button danger" type="submit">Delete flavour</button></form></td></tr>{% endfor %}</tbody></table></div></section>
+      {% endif %}
+    </main>
+    {# This reminder is visible to the user at the bottom of every page. #}
+    <footer>Private partner tracker · Both logins use the same business records.</footer>
+  </div>
+  <script>
+    // Only show recipe choices that match the flavour selected for a new batch.
+    const batchFlavour = document.getElementById('batch-flavour');
+    const batchRecipe = document.getElementById('batch-recipe-variant');
+    const batchRecipeOptions = {{ recipe_options|tojson }};
+    if (batchFlavour && batchRecipe) {
+      function updateBatchRecipes() {
+        const choices = batchRecipeOptions[batchFlavour.value] || [];
+        const names = choices.length ? choices : ['Base recipe'];
+        batchRecipe.replaceChildren(...names.map(name => {
+          const option = document.createElement('option'); option.value = name; option.textContent = name; return option;
+        }));
+      }
+      batchFlavour.addEventListener('change', updateBatchRecipes);
+      updateBatchRecipes();
+    }
+    // A batch can hold many pints; its own scoop count per pint is set when you add it.
+    const saleUnit = document.getElementById('sale-unit-type');
+    const saleQuantity = document.getElementById('sale-quantity');
+    const saleBatch = document.querySelector('select[name="batch_id"]');
+    if (saleUnit && saleQuantity && saleBatch) {
+      function updateSaleQuantityLimit() {
+        const selected = saleBatch.options[saleBatch.selectedIndex];
+        const remainingScoops = Number(selected?.dataset.remaining || 0);
+        const scoopsPerPint = Number(selected?.dataset.scoopsPerPint || 8);
+        const maximum = saleUnit.value === 'pint' ? Math.floor(remainingScoops / scoopsPerPint) : remainingScoops;
+        saleQuantity.max = String(maximum);
+        saleQuantity.placeholder = maximum ? `Up to ${maximum}` : 'Choose a batch with stock';
+        if (Number(saleQuantity.value) > maximum) saleQuantity.value = maximum ? String(maximum) : '';
+      }
+      saleUnit.addEventListener('change', updateSaleQuantityLimit);
+      saleBatch.addEventListener('change', updateSaleQuantityLimit);
+      updateSaleQuantityLimit();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{# Customer welcome page: start here to browse flavours, nutrition, prices, or order. #}
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ business_name }} · High protein ice cream</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body class="order-page"><div class="shell">
+  <header class="public-header"><a class="public-brand" href="{{ url_for('order_home') }}"><img class="brand-logo" src="{{ url_for('static', filename='logo.png') }}" alt="Pint by Cass & Ty logo"></a><a class="public-utility" href="{{ url_for('customer_order') }}">Order</a></header>
+  <main class="welcome-page"><p class="eyebrow">HIGH PROTEIN, LOW CALORIE, NO LACTOSE</p><h1>Pint by Cass &amp; Ty.</h1><p class="muted">Small-batch, made with care in Singapore. </p> Thank you for supporting our business!! ❤️</p>
+  <div class="welcome-options"><a class="welcome-option" href="{{ url_for('order_menu') }}"><span class="eyebrow">01 · MENU</span><h2>Our flavours</h2><p>See our flavours and descriptions.</p><strong>View menu →</strong></a><a class="welcome-option" href="{{ url_for('order_nutrition') }}"><span class="eyebrow">02 · RECIPE FACTS</span><h2>Nutrition</h2><p>See nutrition for one full 400 g pint recipe.</p><strong>View nutrition →</strong></a><a class="welcome-option" href="{{ url_for('order_prices') }}"><span class="eyebrow">03 · PRICES</span><h2>Prices</h2><p>Check the current sizes and prices.</p><strong>View prices →</strong></a></div>
+    <a class="button primary" href="{{ url_for('customer_order') }}">Place an order</a><p class="stay-tuned">Stay tuned for more exciting flavours and updates ✨</p><p class="order-note loyalty-invite">For loyalty points, use the same phone, email, or Telegram username each time you order. Points are added after payment is confirmed.</p>
+  </main><footer>We use your contact details only to arrange and confirm your order.</footer>
+</div><script src="{{ url_for('static', filename='motion.js') }}" defer></script></body></html>

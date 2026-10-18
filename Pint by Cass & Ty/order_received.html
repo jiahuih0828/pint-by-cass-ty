@@ -1,0 +1,39 @@
+{# Confirmation page shown after a customer submits a pickup order. #}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order details · {{ business_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="order-page">
+  <main class="panel received-card">
+    <img class="login-logo" src="{{ url_for('static', filename='logo.jpg') }}" alt="Pint by Cass & Ty logo">
+    <p class="eyebrow">ORDER REQUEST RECEIVED</p>
+    <h1>Thanks for your order!</h1>
+    <p>Your reference is <strong>P-{{ "%05d"|format(order.id) }}</strong>. Please include it in your PayNow or bank-transfer message.</p>
+    <section class="pickup-status {% if order.status == 'Ready for pickup' %}pickup-ready{% endif %}"><span class="eyebrow">{{ 'EVENT ORDER STATUS' if order.fulfilment_method == 'event' else 'PICKUP STATUS' }}</span><strong>{{ order.status }}</strong><p>{% if order.status == 'Ready for pickup' %}{{ 'Your event order is ready.' if order.fulfilment_method == 'event' else 'Your order is ready. Please contact us if you need to arrange a pickup time.' }}{% elif order.status == 'Payment confirmed' %}Payment is confirmed. We’ll update this page when your order is ready.{% elif order.status == 'Cancelled' %}This order request was cancelled. Please contact us if you have already paid.{% else %}We’re waiting to verify your payment before confirming this order.{% endif %}</p><a class="text-link" href="{{ url_for('order_received', code=order.confirmation_code) }}">Refresh pickup status</a></section>
+    <div class="order-total"><span>{{ order.flavour }}{% if order.recipe_variant and order.recipe_variant != 'Base recipe' %} · {{ order.recipe_variant }}{% endif %} · {{ "%.0f"|format(order.scoops) }} {{ 'pint(s)' if order.unit_type == 'pint' else 'scoop(s)' }}</span><strong>{{ order.total_cents|money }}</strong></div>
+    {% if order.fulfilment_method == 'pickup' %}<p class="order-note">Pickup area: {{ 'Cass · ' ~ shop.cass_location if order.pickup_location == 'cass_amk' else 'Tyler · ' ~ shop.tyler_location }} · Date: {{ order.pickup_date }}{% if order.pickup_time %} · {{ order.pickup_time }}{% endif %}</p><p class="order-note">Pickup date changes are posted in our Telegram channel{% if shop.telegram_url %}: <a class="text-link" href="{{ shop.telegram_url }}" target="_blank" rel="noopener">Open Telegram channel ↗</a>{% else %}.{% endif %}</p>{% endif %}
+    {% if order.discount_cents %}<p class="order-note">Subtotal {{ order.subtotal_cents|money }} · loyalty discount −{{ order.discount_cents|money }} · due {{ order.total_cents|money }} ({{ order.reward_points }} points redeemed)</p>{% elif order.reward_points %}<p class="order-note">You requested the {{ order.reward_points }}-point reward{% if order.free_pint_flavour %}: one {{ order.free_pint_flavour }} pint{% endif %}. Due {{ order.total_cents|money }}.</p>{% endif %}
+    {% if order.status in ['Payment confirmed', 'Ready for pickup'] %}<div class="notice success">You earned {{ order.points_earned }} point{{ '' if order.points_earned == 1 else 's' }} from this confirmed order.</div>{% else %}<p class="order-note">Once payment is confirmed, this order will earn {{ order.total_cents // 100 }} point{{ '' if order.total_cents // 100 == 1 else 's' }}.</p>{% endif %}
+    <section class="payment-instructions"><h2>Payment details</h2><p>{{ payment_instructions }}</p><p class="order-note">Use P-{{ "%05d"|format(order.id) }} as your transfer reference.</p></section>
+    {% if order.status in ['Payment confirmed', 'Ready for pickup', 'Cancelled'] %}
+      {% if order.receipt_filename %}<div class="notice success receipt-saved">Payment screenshot received.</div>{% endif %}
+    {% elif order.receipt_filename %}
+      <div class="notice success receipt-saved">Payment screenshot received. Cass or Ty will check the transfer and contact you.</div>
+    {% else %}
+      <section class="receipt-upload"><h2>Upload your payment screenshot</h2><p class="order-note">JPG or PNG only, up to 5 MB. Please hide any unrelated account details before uploading.</p>
+        <form method="post" action="{{ url_for('upload_order_receipt', code=order.confirmation_code) }}" enctype="multipart/form-data" class="receipt-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label>Screenshot<input type="file" name="receipt" accept="image/jpeg,image/png,.jpg,.jpeg,.png" required></label>
+          <button class="button primary" type="submit">Send screenshot securely</button>
+        </form>
+      </section>
+    {% endif %}
+    <p class="order-note">Save this page or its link. It shows your current payment and pickup status; refresh it later to see updates from Cass or Ty.</p>
+    <a class="button primary" href="{{ url_for('customer_order') }}">Place another order</a> <a class="text-link back-link" href="{{ url_for('order_home') }}">Back to home</a>
+  </main>
+</body>
+</html>

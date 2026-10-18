@@ -1,0 +1,7 @@
+# Flask receives browser requests and connects them to the Python functions.
+Flask>=3.0,<4.0
+Flask-Login>=0.6,<1.0
+Flask-WTF>=1.2,<2.0
+python-dotenv>=1.0,<2.0
+gunicorn>=22.0,<24.0
+Pillow>=10.0,<13.0
